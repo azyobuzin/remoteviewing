@@ -509,26 +509,6 @@ namespace RemoteViewing.Windows.Forms
                 bmp.UnlockBits(data);
             }
 
-            /*
-            var iconInfo = new ICONINFO()
-            {
-                fIcon = false,
-                xHotspot = (uint)e.HotspotX,
-                yHotspot = (uint)e.HotspotY,
-                hbmMask = IntPtr.Zero,
-                hbmColor = bmp.GetHbitmap()
-            };
-
-            var hIcon = NativeMethods.CreateIconIndirect(ref iconInfo);
-
-            if (hIcon == IntPtr.Zero)
-            {
-                throw new Win32Exception();
-            }
-
-            this.BeginInvoke(new Action(() => this.Cursor = new Cursor(hIcon)));
-            */
-
             this.cursorBitmap = bmp;
             this.cursorHotspot = new Point(e.HotspotX, e.HotspotY);
             this.Invalidate();
