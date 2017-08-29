@@ -99,5 +99,11 @@ namespace RemoteViewing.Vnc
             get;
             set;
         }
+
+        public bool AllowPseudoCursor
+        {
+            get;
+            set;
+        }
     }
 }

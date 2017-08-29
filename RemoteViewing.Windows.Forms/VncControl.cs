@@ -57,6 +57,8 @@ namespace RemoteViewing.Windows.Forms
         private VncClient client;
         private string expectedClipboard = string.Empty;
         private HashSet<int> keysyms = new HashSet<int>();
+        private Bitmap cursorBitmap;
+        private Point cursorHotspot;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="VncControl"/> class.
@@ -119,6 +121,7 @@ namespace RemoteViewing.Windows.Forms
                     this.client.Closed -= this.HandleClosed;
                     this.client.FramebufferChanged -= this.HandleFramebufferChanged;
                     this.client.RemoteClipboardChanged -= this.HandleRemoteClipboardChanged;
+                    this.client.CursorChanged -= this.HandleCursorChanged;
                 }
 
                 this.client = value;
@@ -130,6 +133,7 @@ namespace RemoteViewing.Windows.Forms
                     this.client.Closed += this.HandleClosed;
                     this.client.FramebufferChanged += this.HandleFramebufferChanged;
                     this.client.RemoteClipboardChanged += this.HandleRemoteClipboardChanged;
+                    this.client.CursorChanged += this.HandleCursorChanged;
                 }
 
                 this.ClearInputState();
@@ -439,16 +443,95 @@ namespace RemoteViewing.Windows.Forms
             {
                 if (e.Contents.Length != 0 && this.expectedClipboard != e.Contents)
                 {
-                    try
+                    this.BeginInvoke(new Action(() =>
                     {
-                        Clipboard.SetText(e.Contents);
-                        this.expectedClipboard = e.Contents;
-                    }
-                    catch (ExternalException)
+                        try
+                        {
+                            Clipboard.SetText(e.Contents);
+                            this.expectedClipboard = e.Contents;
+                        }
+                        catch (ExternalException)
+                        {
+                        }
+                    }));
+                }
+            }
+        }
+
+        private void HandleCursorChanged(object sender, CursorChangedEventArgs e)
+        {
+            if (e.Width == 0 || e.Height == 0)
+            {
+                this.cursorBitmap = null;
+                return;
+            }
+
+            var pixelFormat = this.client.Framebuffer.PixelFormat;
+            if (pixelFormat.BytesPerPixel != 4)
+            {
+                return;
+            }
+
+            var width = e.Width;
+            var height = e.Height;
+            var pixels = e.Pixels;
+            var bitmask = e.Bitmask;
+
+            bool getBitmask(int x, int y)
+            {
+                var lineStart = (width + 7) / 8 * y;
+                var index = lineStart + (x / 8);
+                return (((uint)bitmask[index]) >> (7 - (x % 8)) & 1) == 1;
+            }
+
+            var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            var data = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            try
+            {
+                for (var y = 0; y < height; y++)
+                {
+                    for (var x = 0; x < width; x++)
                     {
+                        unsafe
+                        {
+                            var index = ((y * width) + x) * 4;
+                            var p = &((byte*)data.Scan0)[index];
+                            p[0] = pixels[index + 2];
+                            p[1] = pixels[index + 1];
+                            p[2] = pixels[index];
+                            p[3] = getBitmask(x, y) ? (byte)255 : (byte)0;
+                        }
                     }
                 }
             }
+            finally
+            {
+                bmp.UnlockBits(data);
+            }
+
+            /*
+            var iconInfo = new ICONINFO()
+            {
+                fIcon = false,
+                xHotspot = (uint)e.HotspotX,
+                yHotspot = (uint)e.HotspotY,
+                hbmMask = IntPtr.Zero,
+                hbmColor = bmp.GetHbitmap()
+            };
+
+            var hIcon = NativeMethods.CreateIconIndirect(ref iconInfo);
+
+            if (hIcon == IntPtr.Zero)
+            {
+                throw new Win32Exception();
+            }
+
+            this.BeginInvoke(new Action(() => this.Cursor = new Cursor(hIcon)));
+            */
+
+            this.cursorBitmap = bmp;
+            this.cursorHotspot = new Point(e.HotspotX, e.HotspotY);
+            this.Invalidate();
         }
 
         private void SendKeyUpdate(int keysym, bool pressed)
@@ -583,6 +666,11 @@ namespace RemoteViewing.Windows.Forms
             this.x = e.X;
             this.y = e.Y;
             this.SendMouseUpdate();
+
+            if (this.cursorBitmap != null)
+            {
+                this.Invalidate();
+            }
         }
 
         private void SendMouseScroll(bool down)
@@ -608,6 +696,20 @@ namespace RemoteViewing.Windows.Forms
             }
 
             e.Graphics.DrawImageUnscaled(this.bitmap, 0, 0);
+
+            e.Graphics.ResetTransform();
+
+            var cursorPos = this.PointToClient(Cursor.Position);
+            if (this.cursorBitmap != null)
+            {
+                e.Graphics.DrawImage(
+                    this.cursorBitmap,
+                    cursorPos.X - (this.cursorHotspot.X * scaleFactor),
+                    cursorPos.Y - (this.cursorHotspot.Y * scaleFactor),
+                    this.cursorBitmap.Width * scaleFactor,
+                    this.cursorBitmap.Height * scaleFactor
+                );
+            }
         }
 
 

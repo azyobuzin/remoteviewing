@@ -77,7 +77,11 @@ namespace RemoteViewing.Example
                     return;
                 }
 
-                var options = new Vnc.VncClientConnectOptions();
+                var options = new Vnc.VncClientConnectOptions()
+                {
+                    AllowPseudoCursor = true
+                };
+
                 if (this.txtPassword.Text != string.Empty)
                 {
                     options.Password = this.txtPassword.Text.ToCharArray();

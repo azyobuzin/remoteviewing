@@ -86,6 +86,8 @@ namespace RemoteViewing.Vnc
         /// </summary>
         public event EventHandler<RemoteClipboardChangedEventArgs> RemoteClipboardChanged;
 
+        public event EventHandler<CursorChangedEventArgs> CursorChanged;
+
         /// <summary>
         /// Gets the framebuffer for the VNC session.
         /// </summary>
@@ -599,7 +601,7 @@ namespace RemoteViewing.Vnc
 
         private void NegotiateEncodings()
         {
-            var encodings = new VncEncoding[]
+            var encodings = new List<VncEncoding>(6)
             {
                 VncEncoding.Zlib,
                 VncEncoding.Hextile,
@@ -608,8 +610,13 @@ namespace RemoteViewing.Vnc
                 VncEncoding.PseudoDesktopSize
             };
 
+            if (this.options.AllowPseudoCursor)
+            {
+                encodings.Add(VncEncoding.PseudoCursor);
+            }
+
             this.c.Send(new[] { (byte)2, (byte)0 });
-            this.c.SendUInt16BE((ushort)encodings.Length);
+            this.c.SendUInt16BE((ushort)encodings.Count);
             foreach (var encoding in encodings)
             {
                 this.c.SendUInt32BE((uint)encoding);

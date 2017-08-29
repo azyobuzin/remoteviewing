@@ -65,14 +65,19 @@ namespace RemoteViewing.Vnc
             {
                 var r = this.c.ReceiveRectangle();
                 int x = r.X, y = r.Y, w = r.Width, h = r.Height;
-                VncStream.SanityCheck(w > 0 && w < 0x8000);
-                VncStream.SanityCheck(h > 0 && h < 0x8000);
 
                 int fbW = this.Framebuffer.Width, fbH = this.Framebuffer.Height, bpp = this.Framebuffer.PixelFormat.BytesPerPixel;
                 var inRange = w <= fbW && h <= fbH && x <= fbW - w && y <= fbH - h;
                 byte[] pixels;
 
                 encoding = (VncEncoding)this.c.ReceiveUInt32BE();
+
+                if (encoding != VncEncoding.PseudoCursor)
+                {
+                    VncStream.SanityCheck(w > 0 && w < 0x8000);
+                    VncStream.SanityCheck(h > 0 && h < 0x8000);
+                }
+
                 switch (encoding)
                 {
                     case VncEncoding.Hextile: // KVM seems to avoid this now that I support Zlib.
@@ -262,6 +267,16 @@ namespace RemoteViewing.Vnc
                     case VncEncoding.PseudoDesktopSize:
                         this.Framebuffer = new VncFramebuffer(this.Framebuffer.Name, w, h, this.Framebuffer.PixelFormat);
                         continue; // Don't call OnFramebufferChanged for this one.
+
+                    case VncEncoding.PseudoCursor:
+                        pixels = new byte[w * h * bpp];
+                        this.c.Receive(pixels, 0, pixels.Length);
+
+                        var bitmask = new byte[(w + 7) / 8 * h];
+                        this.c.Receive(bitmask, 0, bitmask.Length);
+
+                        this.CursorChanged?.Invoke(this, new CursorChangedEventArgs(x, y, w, h, pixels, bitmask));
+                        continue;
 
                     default:
                         VncStream.Require(
